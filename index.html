@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Йога</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#2e6a5a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Йога">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+:root{--bg:#eef1ee;--panel:#fbfcfa;--ink:#1d2925;--muted:#5d6b66;--line:#d3dbd6;--accent:#2e6a5a;--warn:#9a5b12}
+@media (prefers-color-scheme:dark){:root{--bg:#141b19;--panel:#1b2421;--ink:#e3ebe7;--muted:#9aaba4;--line:#2f3d38;--accent:#7cc3ac;--warn:#e5b06b}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);
+  font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;padding:24px 16px}
+form{width:100%;max-width:360px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px 22px;display:grid;gap:16px}
+form[hidden]{display:none}
+img{width:64px;height:64px;border-radius:14px;justify-self:center}
+h1{margin:0;font:400 24px/1.2 Georgia,serif;text-align:center}
+input[type=password]{font:inherit;width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+label{display:flex;gap:10px;align-items:center;font-size:16px;color:var(--muted)}
+label input{width:22px;height:22px;accent-color:var(--accent)}
+button{font-family:inherit;font-size:17px;font-weight:600;line-height:1;padding:16px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer}
+p{margin:0;min-height:1.5em;font-size:15px;text-align:center;color:var(--warn)}
+#wait{color:var(--muted)}
+#wait[hidden]{display:none}
+</style>
+</head>
+<body>
+<form id="f" hidden autocomplete="on">
+  <img src="icon-180.png" alt="">
+  <h1>Конструктор йоги</h1>
+  <input type="password" id="pw" placeholder="Пароль" autocomplete="current-password" required>
+  <label><input type="checkbox" id="keep" checked> Запомнить на этом телефоне</label>
+  <button type="submit">Открыть</button>
+  <p id="msg" role="status"></p>
+</form>
+<p id="wait">Открываю…</p>
+<script>
+(function () {
+  var ITER = 310000, KEEP = "yoga-lock-key";
+  if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js").catch(function () {});
+  var $ = function (s) { return document.querySelector(s); };
+  var b64 = function (u8) { var s = ""; for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); };
+  var unb64 = function (s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  var dataP = null;
+  function data() {
+    if (!dataP) { dataP = fetch("data.bin").then(function (r) { if (!r.ok) throw new Error("net"); return r.arrayBuffer(); }, function () { throw new Error("net"); });
+      dataP.catch(function () { dataP = null; }); }
+    return dataP;
+  }
+  function open(raw) {
+    return Promise.all([data(), crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"])]).then(function (r) {
+      var buf = new Uint8Array(r[0]);
+      return crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.subarray(16, 28) }, r[1], buf.subarray(28));
+    }).then(function (plain) {
+      var html = new TextDecoder().decode(plain);
+      document.open(); document.write(html); document.close();
+    });
+  }
+  function derive(pw) {
+    return data().then(function (buf) {
+      var salt = new Uint8Array(buf).subarray(0, 16);
+      return crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]).then(function (k) {
+        return crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: salt, iterations: ITER }, k, 256);
+      });
+    });
+  }
+  var NET = "Нет интернета, а конструктор ещё не сохранился на телефоне. Откройте его один раз с интернетом.";
+  function ask(t) { $("#wait").hidden = true; $("#f").hidden = false; $("#msg").textContent = t || ""; if (!t) $("#pw").focus(); }
+  if (!window.crypto || !crypto.subtle) { ask("Этот браузер не умеет открывать закрытый конструктор. Откройте ссылку в Safari или Chrome."); return; }
+  var saved = null;
+  try { saved = localStorage.getItem(KEEP); } catch (e) { saved = null; }
+  if (saved) open(unb64(saved)).catch(function (e) {
+    if (e && e.message === "net") ask(NET);
+    else { try { localStorage.removeItem(KEEP); } catch (x) {} ask("Конструктор обновился. Введите пароль ещё раз."); }
+  });
+  else ask();
+  $("#f").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("#msg").textContent = "Открываю…";
+    var keep = $("#keep").checked;
+    derive($("#pw").value).then(function (bits) {
+      var raw = new Uint8Array(bits);
+      if (keep) { try { localStorage.setItem(KEEP, b64(raw)); } catch (x) {} }
+      return open(raw).catch(function (err) {
+        try { localStorage.removeItem(KEEP); } catch (x) {}
+        throw err && err.message === "net" ? err : new Error("pw");
+      });
+    }).catch(function (err) { $("#msg").textContent = err && err.message === "net" ? NET : "Пароль не подходит."; });
+  });
+})();
+</script>
+</body>
+</html>
