@@ -1,5 +1,5 @@
 // Версия меняется с каждым обновлением конструктора: телефон подхватит новую при следующем открытии с интернетом
-const V = "yoga-b6f28be095";
+const V = "yoga-a687ba78d6";
 const CORE = ["./", "index.html", "data.bin", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
